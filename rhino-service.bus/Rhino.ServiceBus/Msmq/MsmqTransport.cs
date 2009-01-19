@@ -22,7 +22,10 @@ namespace Rhino.ServiceBus.Msmq
 		private readonly IMessageSerializer serializer;
 		private readonly int threadCount;
 		private readonly WaitHandle[] waitHandles;
+		private IInitializeSubQueues subQueueInitializer;
+
 		private bool haveStarted;
+		
 		private MessageQueue queue;
 	    private readonly IMessageAction[] messageActions;
 
@@ -39,6 +42,11 @@ namespace Rhino.ServiceBus.Msmq
 			waitHandles = new WaitHandle[threadCount];
 		}
 
+		public IInitializeSubQueues SubQueueInitializer
+		{
+			get { return subQueueInitializer; }
+			set { this.subQueueInitializer = value;}
+		}
 
 		public volatile bool ShouldStop;
 
@@ -56,6 +64,11 @@ namespace Rhino.ServiceBus.Msmq
 
 			logger.DebugFormat("Starting msmq transport on: {0}", Endpoint);
 			queue = InitalizeQueue(endpoint);
+			
+			if(subQueueInitializer != null)
+			{
+				subQueueInitializer.InitializeSubQueues(Endpoint,queue.Transactional);
+			}
 
 		    foreach (var messageAction in messageActions)
 		    {
@@ -232,6 +245,7 @@ namespace Rhino.ServiceBus.Msmq
 		{
 		    try
 			{
+					
 				var messageQueue = endpoint.CreateQueue(QueueAccessMode.SendAndReceive);
 				var filter = new MessagePropertyFilter();
 				filter.SetAll();

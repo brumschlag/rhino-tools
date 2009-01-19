@@ -54,5 +54,6 @@ namespace Rhino.ServiceBus.Msmq
 		/// <param name="queue">The queue.</param>
 		/// <param name="messageId">The message id.</param>
 		void MoveTimeoutToMainQueue(MessageQueue queue, string messageId);
+
     }
 }

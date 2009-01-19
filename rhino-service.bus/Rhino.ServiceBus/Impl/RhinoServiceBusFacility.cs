@@ -109,6 +109,14 @@ namespace Rhino.ServiceBus.Impl
                     .ImplementedBy(serializerImpl)
                 );
 
+						if(queueStrategyImpl == typeof(FlatQueueStrategy))
+						{
+							Kernel.Register(
+								Component.For<IInitializeSubQueues>()
+									.ImplementedBy<FlatQueueSubQueueInitializer>()
+								);
+						}
+
             Kernel.Register(
                 AllTypes.Of<IMessageAction>()
                     .FromAssembly(typeof(IMessageAction).Assembly)

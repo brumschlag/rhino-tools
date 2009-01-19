@@ -30,10 +30,10 @@ namespace Rhino.ServiceBus.Msmq
                 string.Compare(hostName, "localhost", true) == 0)
             {
                 hostName = localhost;
-                uri = new Uri("msmq://" + localhost + uri.AbsolutePath);
+                uri = new Uri("msmq://" + localhost + uri.AbsolutePath + uri.Fragment);
             }
 
-            return string.Format(hostName + "\\private$\\" + uri.AbsolutePath.Substring(1));
+            return string.Format(hostName + "\\private$\\" + uri.AbsolutePath.Substring(1) + uri.Fragment);
         }
 
         public static Uri GetQueueUri(MessageQueue queue)

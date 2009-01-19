@@ -98,8 +98,12 @@ namespace Rhino.ServiceBus.Msmq
 
             }
         }
+			 public static MessageQueue CreateQueue(this Uri queueUri, QueueAccessMode accessMode)
+        {
+			 	return CreateQueue(queueUri, true, accessMode);
+        }
 
-        public static MessageQueue CreateQueue(this Uri queueUri, QueueAccessMode accessMode)
+        public static MessageQueue CreateQueue(this Uri queueUri,bool transactional, QueueAccessMode accessMode)
         {
             var queuePath = MsmqUtil.GetQueuePath(queueUri);
 
@@ -109,7 +113,7 @@ namespace Rhino.ServiceBus.Msmq
                 {
                     try
                     {
-                        MessageQueue.Create(queuePath, true);
+                        MessageQueue.Create(queuePath, transactional);
                     }
                     catch (Exception e)
                     {
