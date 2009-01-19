@@ -36,6 +36,7 @@ namespace Rhino.ServiceBus.Tests
             Assert.True(wasCalled);
         }
     }
+
     public class UnserializableMessageWillBeForwardedToFlattenedErrorQueue : MsmqFlatQueueTestBase
     {
         [Fact]

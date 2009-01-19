@@ -64,46 +64,47 @@ namespace Rhino.ServiceBus.Tests
             if (MessageQueue.Exists(transactionalTestQueuePath) == false)
                 MessageQueue.Create(transactionalTestQueuePath, true);
 
-            if (MessageQueue.Exists(testQueuePath + errorsPathSuffix) == false)
-                MessageQueue.Create(testQueuePath + errorsPathSuffix);
-
-            if (MessageQueue.Exists(testQueuePath2 + errorsPathSuffix) == false)
-                MessageQueue.Create(testQueuePath2 + errorsPathSuffix);
-
-            if (MessageQueue.Exists(transactionalTestQueuePath + errorsPathSuffix) == false)
-                MessageQueue.Create(transactionalTestQueuePath + errorsPathSuffix, true);
-
-            if (MessageQueue.Exists(testQueuePath + discardedPathSuffix) == false)
-                MessageQueue.Create(testQueuePath + discardedPathSuffix);
 
             queue = new MessageQueue(testQueuePath);
             queue.Purge();
 
-            using (var errQueue = new MessageQueue(testQueuePath + errorsPathSuffix))
-            {
-                errQueue.Purge();
-            }
+						if(MessageQueue.Exists(testQueuePath+ errorsPathSuffix))
+						{
+							using (var errQueue = new MessageQueue(testQueuePath + errorsPathSuffix))
+							{
+								errQueue.Purge();
+							}
+						}
 
-            using (var discardedQueue = new MessageQueue(testQueuePath + discardedPathSuffix))
-            {
-                discardedQueue.Purge();
-            }
+					if(MessageQueue.Exists(testQueuePath+discardedPathSuffix))
+					{
+						using (var discardedQueue = new MessageQueue(testQueuePath + discardedPathSuffix))
+						{
+							discardedQueue.Purge();
+						}
+					}
 
-            testQueue2 = new MessageQueue(testQueuePath2);
+        	testQueue2 = new MessageQueue(testQueuePath2);
             testQueue2.Purge();
 
-            using (var errQueue2 = new MessageQueue(testQueuePath2 + errorsPathSuffix))
-            {
-                errQueue2.Purge();
-            }
+					if(MessageQueue.Exists(testQueuePath2+errorsPathSuffix))
+					{
+						using (var errQueue2 = new MessageQueue(testQueuePath2 + errorsPathSuffix))
+						{
+							errQueue2.Purge();
+						}
+					}
 
-            transactionalQueue = new MessageQueue(transactionalTestQueuePath);
+        	transactionalQueue = new MessageQueue(transactionalTestQueuePath);
             transactionalQueue.Purge();
 
-            using (var errQueue3 = new MessageQueue(transactionalTestQueuePath + errorsPathSuffix))
-            {
-                errQueue3.Purge();
-            }
+        	if (MessageQueue.Exists(transactionalTestQueuePath + errorsPathSuffix)) 
+        	{
+        		using (var errQueue3 = new MessageQueue(transactionalTestQueuePath + errorsPathSuffix))
+        		{
+        			errQueue3.Purge();
+        		}
+        	}
 
             subscriptions = new MessageQueue(subbscriptionQueuePath)
             {
@@ -122,7 +123,7 @@ namespace Rhino.ServiceBus.Tests
                         new XmlMessageSerializer(
                             new DefaultReflection(),
                             new DefaultKernel()), TestQueueUri, 1,
-                        DefaultMessageActions(TestQueueUri));
+                        DefaultMessageActions(TestQueueUri)){ SubQueueInitializer = new FlatQueueSubQueueInitializer()};
                     transport.Start();
                 }
                 return transport;
@@ -150,7 +151,7 @@ namespace Rhino.ServiceBus.Tests
                 if (transactionalTransport == null)
                 {
                     transactionalTransport = new MsmqTransport(new XmlMessageSerializer(new DefaultReflection(), new DefaultKernel()),
-                                                               TransactionalTestQueueUri, 1, DefaultMessageActions(TransactionalTestQueueUri));
+                                                               TransactionalTestQueueUri, 1, DefaultMessageActions(TransactionalTestQueueUri) ){ SubQueueInitializer = new FlatQueueSubQueueInitializer()};
                     transactionalTransport.Start();
                 }
                 return transactionalTransport;

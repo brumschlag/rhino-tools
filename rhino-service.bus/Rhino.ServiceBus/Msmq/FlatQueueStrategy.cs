@@ -62,7 +62,8 @@ namespace Rhino.ServiceBus.Msmq
 		/// <param name="message">The message.</param>
 		public void MoveToErrorsQueue(MessageQueue queue, Message message)
 		{
-			using (var destinationQueue = new MessageQueue(GetErrorsQueuePath(), QueueAccessMode.Send))
+			
+			using (var destinationQueue = new MessageQueue(GetErrorsQueuePath(),QueueAccessMode.Send))
 			{
 				destinationQueue.Send(queue.ReceiveByLookupId(message.LookupId),
 									  queue.GetTransactionType());
@@ -77,7 +78,7 @@ namespace Rhino.ServiceBus.Msmq
 		/// <param name="message">The message.</param>
 		public void MoveToDiscardedQueue(MessageQueue queue, Message message)
 		{
-			using (var destinationQueue = new MessageQueue(GetDiscardedQueuePath(), QueueAccessMode.Send))
+			using (var destinationQueue = new MessageQueue(GetDiscardedQueuePath(),QueueAccessMode.Send))
 			{
 				destinationQueue.Send(queue.ReceiveByLookupId(message.LookupId), destinationQueue.GetTransactionType());
 			}
@@ -90,7 +91,7 @@ namespace Rhino.ServiceBus.Msmq
 		/// <param name="message">The message.</param>
 		public void MoveToTimeoutQueue(MessageQueue queue, Message message)
 		{
-			using (var destinationQueue = new MessageQueue(GetTimeoutQueuePath(), QueueAccessMode.Send))
+			using (var destinationQueue = new MessageQueue(GetTimeoutQueuePath(),QueueAccessMode.Send))
 			{
 				destinationQueue.Send(queue.ReceiveByLookupId(message.LookupId), destinationQueue.GetTransactionType());
 			}
@@ -117,6 +118,15 @@ namespace Rhino.ServiceBus.Msmq
 				var message = destinationQueue.ReceiveById(messageId, queue.GetTransactionType());
 				message.AppSpecific = 0;//reset timeout flag
 				queue.Send(message, destinationQueue.GetTransactionType());
+			}
+		}
+
+		internal static void InitializeSubQueues(Uri endpoint, bool transactional)
+		{
+			var siblingQueues = new[] {"#errors", "#discarded", "#timeout"};
+			foreach(var sibling in siblingQueues)
+			{
+				new Uri(endpoint.ToString() + sibling).CreateQueue(transactional,QueueAccessMode.Peek).Close();
 			}
 		}
 
@@ -149,5 +159,6 @@ namespace Rhino.ServiceBus.Msmq
 			var path = MsmqUtil.GetQueuePath(endpoint);
 			return path + "#timeout";
 		}
+
 	}
 }

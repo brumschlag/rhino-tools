@@ -102,5 +102,10 @@ namespace Rhino.ServiceBus.Msmq
 				queue.Send(message, queue.GetTransactionType());
 			}
 		}
+
+		public void InitializeQueue(Uri endpoint)
+		{
+			
+		}
 	}
 }
