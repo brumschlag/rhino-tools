@@ -9,11 +9,12 @@ using Rhino.ServiceBus.Internal;
 using Rhino.ServiceBus.MessageModules;
 using Rhino.ServiceBus.Messages;
 using Rhino.ServiceBus.Sagas;
-using Rhino.ServiceBus.Util;
 
 namespace Rhino.ServiceBus.Impl
 {
-    public class DefaultServiceBus : IStartableServiceBus
+	using Queues.Utils;
+
+	public class DefaultServiceBus : IStartableServiceBus
     {
         private readonly IKernel kernel;
 
@@ -298,7 +299,7 @@ namespace Rhino.ServiceBus.Impl
     	/// </summary>
     	public void HandleCurrentMessageLater()
     	{
-			transport.Send(Endpoint, DateTime.Now, currentMessage);
+            transport.Send(Endpoint, DateTime.Now, new[] { currentMessage });
     	}
 
         /// <summary>

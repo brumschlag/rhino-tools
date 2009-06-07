@@ -9,6 +9,7 @@ using Rhino.ServiceBus.Internal;
 using Rhino.ServiceBus.Msmq;
 using Rhino.ServiceBus.Msmq.TransportActions;
 using Rhino.ServiceBus.Serializers;
+using System.Transactions;
 
 namespace Rhino.ServiceBus.Tests
 {
@@ -22,7 +23,7 @@ namespace Rhino.ServiceBus.Tests
             });    
         }
 
-        private readonly string subbscriptionQueuePath;
+        private readonly string subscriptionQueuePath;
         protected readonly Endpoint SubscriptionsUri;
 
         protected readonly string testQueuePath;
@@ -58,7 +59,7 @@ namespace Rhino.ServiceBus.Tests
 			subbscriptionQueuePath2 = MsmqUtil.GetQueuePath(SubscriptionsUri2).QueuePathWithSubQueue;
 
             SubscriptionsUri = new Uri("msmq://localhost/test_queue;subscriptions").ToEndpoint();
-			subbscriptionQueuePath = MsmqUtil.GetQueuePath(SubscriptionsUri).QueuePathWithSubQueue;
+			subscriptionQueuePath = MsmqUtil.GetQueuePath(SubscriptionsUri).QueuePathWithSubQueue;
 
             if (MessageQueue.Exists(testQueuePath) == false)
                 MessageQueue.Create(testQueuePath);
@@ -103,7 +104,7 @@ namespace Rhino.ServiceBus.Tests
 				timeoutQueue.Purge();
 			}
 
-            subscriptions = new MessageQueue(subbscriptionQueuePath)
+            subscriptions = new MessageQueue(subscriptionQueuePath)
             {
                 Formatter = new XmlMessageFormatter(new[] { typeof(string) })
             };
@@ -130,7 +131,8 @@ namespace Rhino.ServiceBus.Tests
                             new SubQueueStrategy(),
                             TestQueueUri.Uri, 1, 
                             defaultTransportActions,
-                            new EndpointRouter());
+                            new EndpointRouter(),
+							IsolationLevel.Serializable);
                     transport.Start();
                 }
                 return transport;
@@ -149,19 +151,20 @@ namespace Rhino.ServiceBus.Tests
                         TransactionalTestQueueUri.Uri, 
                         1,
                         defaultTransportActions,
-                            new EndpointRouter());
+                            new EndpointRouter(),
+							IsolationLevel.Serializable);
                     transactionalTransport.Start();
                 }
                 return transactionalTransport;
             }
         }
 
-        private static ITransportAction[] defaultTransportActions
+        private static IMsmqTransportAction[] defaultTransportActions
         {
             get
             {
                 var qs = new SubQueueStrategy();
-                return new ITransportAction[]
+                return new IMsmqTransportAction[]
                 {
                     new AdministrativeAction(),
                     new ErrorAction(5, qs),

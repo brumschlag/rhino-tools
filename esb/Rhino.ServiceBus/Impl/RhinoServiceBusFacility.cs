@@ -3,8 +3,10 @@ using System.Collections.Generic;
 using System.Configuration;
 using Castle.Core;
 using Castle.Core.Configuration;
+using Castle.MicroKernel;
 using Castle.MicroKernel.Registration;
 using Rhino.ServiceBus.Actions;
+using System.Transactions;
 
 namespace Rhino.ServiceBus.Impl
 {
@@ -51,7 +53,7 @@ namespace Rhino.ServiceBus.Impl
         {
             IConfiguration messageConfig = FacilityConfig.Children["messages"];
             if (messageConfig == null)
-                throw new ConfigurationErrorsException("Could not find 'messages' node in confiuration");
+                throw new ConfigurationErrorsException("Could not find 'messages' node in configuration");
 
             foreach (IConfiguration configuration in messageConfig.Children)
             {
@@ -85,24 +87,36 @@ namespace Rhino.ServiceBus.Impl
         {
             IConfiguration busConfig = FacilityConfig.Children["bus"];
             if (busConfig == null)
-                throw new ConfigurationErrorsException("Could not find 'bus' node in confiuration");
+                throw new ConfigurationErrorsException("Could not find 'bus' node in configuration");
 
             string retries = busConfig.Attributes["numberOfRetries"];
             int result;
             if (int.TryParse(retries, out result))
-                numberOfRetries = result;
+                NumberOfRetries = result;
 
-            string threads = busConfig.Attributes["threadCounts"];
+            string threads = busConfig.Attributes["threadCount"];
             if (int.TryParse(threads, out result))
-                threadCount = result;
+                ThreadCount = result;
+
+        	string isolationLevel = busConfig.Attributes["queueIsolationLevel"];
+			if (!string.IsNullOrEmpty(isolationLevel))
+				queueIsolationLevel = (IsolationLevel)Enum.Parse(typeof(IsolationLevel), isolationLevel);
+			
 
             string uriString = busConfig.Attributes["endpoint"];
+            Uri endpoint;
             if (Uri.TryCreate(uriString, UriKind.Absolute, out endpoint) == false)
             {
                 throw new ConfigurationErrorsException(
                     "Attribute 'endpoint' on 'bus' has an invalid value '" + uriString + "'");
             }
+            Endpoint = endpoint;
         }
 
+	    public IFacility UseFlatQueueStructure()
+	    {
+	        UseFlatQueue = true;
+	        return this;
+	    }
     }
 }

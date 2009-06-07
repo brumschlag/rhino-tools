@@ -8,6 +8,8 @@ using Rhino.ServiceBus.Exceptions;
 using Rhino.ServiceBus.Impl;
 using Rhino.ServiceBus.Internal;
 using Rhino.ServiceBus.Msmq.TransportActions;
+using Rhino.ServiceBus.Transport;
+using MessageType=Rhino.ServiceBus.Transport.MessageType;
 
 namespace Rhino.ServiceBus.Msmq
 {
@@ -22,15 +24,17 @@ namespace Rhino.ServiceBus.Msmq
         }
 
         private readonly ILog logger = LogManager.GetLogger(typeof(MsmqTransport));
-        private readonly ITransportAction[] transportActions;
+        private readonly IMsmqTransportAction[] transportActions;
+    	private readonly IsolationLevel queueIsolationLevel;
 
-        public MsmqTransport(IMessageSerializer serializer, IQueueStrategy queueStrategy, Uri endpoint, int threadCount, ITransportAction[] transportActions, IEndpointRouter endpointRouter)
+    	public MsmqTransport(IMessageSerializer serializer, IQueueStrategy queueStrategy, Uri endpoint, int threadCount, IMsmqTransportAction[] transportActions, IEndpointRouter endpointRouter, IsolationLevel queueIsolationLevel)
             :base(queueStrategy,endpoint, threadCount, serializer,endpointRouter)
         {
-            this.transportActions = transportActions;
+        	this.transportActions = transportActions;
+        	this.queueIsolationLevel = queueIsolationLevel;
         }
 
-        #region ITransport Members
+    	#region ITransport Members
 
         protected override void BeforeStart(OpenedQueue queue)
         {
@@ -96,14 +100,14 @@ namespace Rhino.ServiceBus.Msmq
             SendMessageToQueue(message, endpoint);
 		}
 
-        public void Send(Endpoint endpoint, params object[] msgs)
+        public void Send(Endpoint destination, object[] msgs)
 		{
 			if(HaveStarted==false)
 				throw new InvalidOperationException("Cannot send a message before transport is started");
 
 			var message = GenerateMsmqMessageFromMessageBatch(msgs);
 
-            SendMessageToQueue(message, endpoint);
+            SendMessageToQueue(message, destination);
 
 			var copy = MessageSent;
 			if (copy == null)
@@ -113,7 +117,7 @@ namespace Rhino.ServiceBus.Msmq
 			{
 				AllMessages = msgs,
 				Source = Endpoint.Uri,
-				Destination = endpoint.Uri,
+				Destination = destination.Uri,
                 MessageId = message.GetMessageId(),
 			});
 		}
@@ -124,7 +128,12 @@ namespace Rhino.ServiceBus.Msmq
 
         public void ReceiveMessageInTransaction(OpenedQueue queue, string messageId, Func<CurrentMessageInformation, bool> messageArrived, Action<CurrentMessageInformation, Exception> messageProcessingCompleted)
 		{
-			using (var tx = new TransactionScope(TransactionScopeOption.Required, GetTransactionTimeout()))
+        	var transactionOptions = new TransactionOptions
+        	{
+				IsolationLevel = queueIsolationLevel,
+				Timeout = TransportUtil.GetTransactionTimeout(),
+        	};
+			using (var tx = new TransactionScope(TransactionScopeOption.Required, transactionOptions))
 			{
 				var message = queue.TryGetMessageFromQueue(messageId);
                 
@@ -160,36 +169,58 @@ namespace Rhino.ServiceBus.Msmq
 			Message message,
 			TransactionScope tx,
             OpenedQueue messageQueue,
-			Exception exception)
+			Exception exception,
+			Action<CurrentMessageInformation, Exception> messageCompleted)
 		{
 			if (exception == null)
 			{
 				try
 				{
 					if (tx != null)
+					{
 						tx.Complete();
+						tx.Dispose();
+					}
+					try
+					{
+						if (messageCompleted != null)
+							messageCompleted(currentMessageInformation, exception);
+					}
+					catch (Exception e)
+					{
+						logger.Error("An error occured when raising the MessageCompleted event, the error will NOT affect the message processing", e);
+					}
 					return;
 				}
 				catch (Exception e)
 				{
 					logger.Warn("Failed to complete transaction, moving to error mode", e);
+					exception = e;
 				}
 			}
 			if (message == null)
 				return;
 
-            try
+
+			try
+			{
+				if (messageCompleted != null)
+					messageCompleted(currentMessageInformation, exception);
+			}
+			catch (Exception e)
+			{
+				logger.Error("An error occured when raising the MessageCompleted event, the error will NOT affect the message processing", e);
+			} 
+			
+			try
             {
-                Action<CurrentMessageInformation, Exception> copy = MessageProcessingFailure;
+                var copy = MessageProcessingFailure;
                 if (copy != null)
                     copy(currentMessageInformation, exception);
             }
             catch (Exception moduleException)
             {
-                string exMsg = "";
-                if (exception != null)
-                    exMsg = exception.Message;
-                logger.Error("Module failed to process message failure: " + exMsg,
+                logger.Error("Module failed to process message failure: " + exception.Message,
                                              moduleException);
             }
 
@@ -206,65 +237,39 @@ namespace Rhino.ServiceBus.Msmq
             Func<CurrentMessageInformation, bool> messageRecieved,
             Action<CurrentMessageInformation, Exception> messageCompleted)
 		{
-		    Exception ex = null;
-		    currentMessageInformation = CreateMessageInformation(messageQueue, message, null, null);
-            try
-            {
-                //deserialization errors do not count for module events
-                object[] messages = DeserializeMessages(messageQueue, message, MessageSerializationException);
-                try
-                {
-                    foreach (object msg in messages)
-                    {
-                        currentMessageInformation = CreateMessageInformation(messageQueue,message, messages, msg);
+			Exception ex = null;
+				currentMessageInformation = CreateMessageInformation(messageQueue, message, null, null);
+				try
+				{
+					//deserialization errors do not count for module events
+					object[] messages = DeserializeMessages(messageQueue, message, MessageSerializationException);
+					try
+					{
+						foreach (object msg in messages)
+						{
+							currentMessageInformation = CreateMessageInformation(messageQueue, message, messages, msg);
 
-                        if(ProcessSingleMessage(messageRecieved)==false)
-                            Discard(currentMessageInformation.Message);
-                    }
-                }
-                catch (Exception e)
-                {
-                    ex = e;
-                    logger.Error("Failed to process message", e);
-                }
-                finally
-                {
-                    try
-                    {
-                        if (messageCompleted != null)
-                            messageCompleted(currentMessageInformation, ex);
-                    }
-                    catch (Exception e)
-                    {
-                        logger.Error("An error occured when raising the MessageCompleted event, the error will NOT affect the message processing", e);
-                    }
-                }
-            }
-            catch (Exception e)
-            {
-                ex = e;
-                logger.Error("Failed to deserialize message", e);
-            }
-            finally
-		    {
-                HandleMessageCompletion(message, tx, messageQueue, ex);
-                currentMessageInformation = null;
-		    } 
+							if (TransportUtil.ProcessSingleMessage(currentMessageInformation, messageRecieved) == false) Discard(currentMessageInformation.Message);
+						}
+					}
+					catch (Exception e)
+					{
+						ex = e;
+						logger.Error("Failed to process message", e);
+					}
+				}
+				catch (Exception e)
+				{
+					ex = e;
+					logger.Error("Failed to deserialize message", e);
+				}
+				finally
+				{
+					HandleMessageCompletion(message, tx, messageQueue, ex, messageCompleted);
+					currentMessageInformation = null;
+				}
+		
 		}
-
-	    private static bool ProcessSingleMessage(Func<CurrentMessageInformation, bool> messageRecieved)
-	    {
-	        if (messageRecieved == null)
-	            return false;
-	        foreach (Func<CurrentMessageInformation, bool> func in messageRecieved.GetInvocationList())
-	        {
-	            if (func(currentMessageInformation))
-	            {
-	                return true;
-	            }
-	        }
-	        return false;
-	    }
 
 	    private MsmqCurrentMessageInformation CreateMessageInformation(OpenedQueue queue,Message message, object[] messages, object msg)
 	    {

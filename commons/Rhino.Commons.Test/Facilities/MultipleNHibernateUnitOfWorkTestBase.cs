@@ -27,8 +27,8 @@ namespace Rhino.Commons.Test.Facilities
 				UnitOfWork.GetCurrentSessionFor(typeof(DomainObjectFromDatabase1)), 
 				UnitOfWork.GetCurrentSessionFor(typeof(DomainObjectFromDatabase2)) 
 			};
-			schemas[0].Execute(false, true, false, true, sessions[0].Connection, null);
-			schemas[1].Execute(false, true, false, true, sessions[1].Connection, null);
+			schemas[0].Execute(false, true, false, sessions[0].Connection, null);
+			schemas[1].Execute(false, true, false, sessions[1].Connection, null);
 
 			//insert test data and evict from session
 			With.Transaction(delegate
@@ -75,11 +75,11 @@ namespace Rhino.Commons.Test.Facilities
                 new NHibernateUnitOfWorkFacilityConfig()
                     .AddEntity(typeof(DomainObjectFromDatabase1))
                     .NHibernateConfiguration(Path.Combine(directory, "Database1.cfg.xml"))
-                    .RegisterEntitiesWhere(delegate(Type t){return true; }),
+                    .RegisterEntitiesWhere(delegate {return true; }),
                 new NHibernateUnitOfWorkFacilityConfig()
                     .AddEntity(typeof(DomainObjectFromDatabase2))
                     .NHibernateConfiguration(Path.Combine(directory, "Database2.cfg.xml"))
-                    .RegisterEntitiesWhere(delegate(Type t){return true; })
+                    .RegisterEntitiesWhere(delegate {return true; })
             };
 		}
 	}

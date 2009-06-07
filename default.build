@@ -19,6 +19,7 @@
 		<include name="igloo/default.build" />	
 		<include name="licensing/default.build" />		
 		<include name="pht/default.build" />
+		<include name="queues/default.build" />
 		<include name="esb/default.build" />
 	</fileset>
 
@@ -124,7 +125,7 @@
 		</copy>
 		
 		<foreach item="String" delim=" " property="dependency.dir" 
-			in="Boo Castle FileHelpers ICSharpCode Interop NHibernate SqlCE SqLite.Net System VisualStudio Esent xunit">
+			in="Boo Castle FileHelpers ICSharpCode Interop NHibernate SqlCE SqLite.Net System VisualStudio Esent xunit Wintellect">
 			
 			<!-- Copy framework-neutral libraries -->
 			<copy todir="${build.dir}" >

@@ -8,7 +8,8 @@ using Rhino.ServiceBus.Exceptions;
 using Rhino.ServiceBus.Internal;
 using Rhino.ServiceBus.Messages;
 using Rhino.ServiceBus.Msmq;
-using MessageType = Rhino.ServiceBus.Msmq.MessageType;
+using Rhino.ServiceBus.Transport;
+using MessageType = Rhino.ServiceBus.Transport.MessageType;
 using System.Linq;
 
 namespace Rhino.ServiceBus.LoadBalancer
@@ -159,6 +160,15 @@ namespace Rhino.ServiceBus.LoadBalancer
             {
                 SendHeartBeatToSecondaryServer(null);
                 heartBeatTimer.Change(TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1));
+
+                SendToAllWorkers(
+                    GenerateMsmqMessageFromMessageBatch(new Reroute
+                    {
+                        NewEndPoint = Endpoint.Uri,
+                        OriginalEndPoint = Endpoint.Uri
+                    }),
+                    "Rerouting {1} back to {0}"
+                    );
             }
 
             if (ShouldNotifyWorkersLoaderIsReadyToAcceptWorkOnStartup)
@@ -178,7 +188,7 @@ namespace Rhino.ServiceBus.LoadBalancer
             var acceptingWork = new AcceptingWork { Endpoint = Endpoint.Uri };
             SendToAllWorkers(
                 GenerateMsmqMessageFromMessageBatch(acceptingWork),
-                "Notifing {1} that {1} is accepting work"
+                "Notifing {1} that {0} is accepting work"
                 );
         }
 
@@ -191,7 +201,7 @@ namespace Rhino.ServiceBus.LoadBalancer
         {
             try
             {
-                using (var tx = new TransactionScope(TransactionScopeOption.Required, GetTransactionTimeout()))
+                using (var tx = new TransactionScope(TransactionScopeOption.Required, TransportUtil.GetTransactionTimeout()))
                 {
                     message = queue.TryGetMessageFromQueue(message.Id);
                     if (message == null)

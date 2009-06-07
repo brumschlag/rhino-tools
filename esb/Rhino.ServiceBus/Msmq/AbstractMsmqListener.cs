@@ -2,6 +2,7 @@ using System;
 using System.Diagnostics;
 using System.Linq;
 using System.Messaging;
+using System.Runtime.Serialization;
 using System.Threading;
 using System.Transactions;
 using log4net;
@@ -9,6 +10,8 @@ using Rhino.ServiceBus.Exceptions;
 using Rhino.ServiceBus.Impl;
 using Rhino.ServiceBus.Internal;
 using Rhino.ServiceBus.Messages;
+using Rhino.ServiceBus.Transport;
+using MessageType=Rhino.ServiceBus.Transport.MessageType;
 
 namespace Rhino.ServiceBus.Msmq
 {
@@ -178,7 +181,7 @@ namespace Rhino.ServiceBus.Msmq
                     if (peek == false || shouldStop)//error reading from queue
                     {
                         TransportState = TransportState.FailedToReadFromQueue;
-                        return; // return from method, we have failed}
+                        return; // return from method, we have failed
                     }
                     if (peek == null) //nothing was found 
                         continue;
@@ -263,18 +266,19 @@ namespace Rhino.ServiceBus.Msmq
             return true;
         }
 
-        protected static TimeSpan GetTransactionTimeout()
-        {
-            if (Debugger.IsAttached)
-                return TimeSpan.FromMinutes(45);
-            return TimeSpan.Zero;
-        }
-
         protected Message GenerateMsmqMessageFromMessageBatch(params object[] msgs)
         {
             var message = new Message();
 
-            messageSerializer.Serialize(msgs, message.BodyStream);
+        	try
+        	{
+        		messageSerializer.Serialize(msgs, message.BodyStream);
+        	}
+        	catch (SerializationException ex)
+        	{
+        		logger.Error("Error when trying to serialize message.", ex);
+        		throw;
+        	}
 
             message.ResponseQueue = InitalizeQueue(Endpoint).ToResponseQueue();
 

@@ -60,7 +60,7 @@ namespace Rhino.PersistentHashTable
 			get { return dataColumns; }
 		}
 
-		public PersistentHashTableActions(Instance instance, string database, Cache cache, Guid instanceId)
+		public PersistentHashTableActions(JET_INSTANCE instance, string database, Cache cache, Guid instanceId)
 		{
 			this.cache = cache;
 			this.instanceId = instanceId;
@@ -80,32 +80,38 @@ namespace Rhino.PersistentHashTable
 
 		public PutResult Put(PutRequest request)
 		{
-			var doesAllVersionsMatch = DoesAllVersionsMatch(request.Key, request.ParentVersions);
-
 			var hash = GetSha256Hash(request);
-			if (doesAllVersionsMatch == false)
+			var versions = GatherActiveVersions(request.Key);
+			if (versions.Length == 1)
 			{
-				var versions = GatherActiveVersions(request.Key);
-				if (versions.Length == 1)
-				{
-					var values = Get(new GetRequest{Key = request.Key, SpecifiedVersion = versions[0]});
-					if(values.Length==1 && 
-						values[0].Sha256Hash.SequenceEqual(hash))
-					{
-						return new PutResult
-						{
-							Version = versions[0]
-						};
-					}
-				}
-				if (request.OptimisticConcurrency)
+				// Test that the key doesn't already exist with matching value
+				var values = Get(new GetRequest { Key = request.Key, SpecifiedVersion = versions[0] });
+				if (values.Length == 1 && values[0].Sha256Hash.SequenceEqual(hash))
 				{
 					return new PutResult
 					{
-						ConflictExists = true,
-						Version = null
+						ConflictExists = false,
+						Version = versions[0]
 					};
 				}
+			}
+
+			// we always accept read only put requests, because
+			// we assume that there can never be a conflict with them
+			// since they are read only values.
+			var doesAllVersionsMatch = 
+				request.IsReadOnly ? 
+				request.IsReadOnly : 
+				DoesAllVersionsMatch(request.Key, request.ParentVersions);
+			
+			if (doesAllVersionsMatch == false &&
+				request.OptimisticConcurrency)
+			{
+				return new PutResult
+				{
+					ConflictExists = true,
+					Version = null
+				};
 			}
 
 			// always remove the active versions from the cache
@@ -114,12 +120,12 @@ namespace Rhino.PersistentHashTable
 			{
 				// we only remove existing versions from the 
 				// cache if we delete them from the database
-				foreach (var parentVersion in request.ParentVersions)
+				foreach (var parentVersion in versions)
 				{
 					var copy = parentVersion;
 					commitSyncronization.Add(() => cache.Remove(GetKey(request.Key, copy)));
 				}
-				DeleteAllKeyValuesForVersions(request.Key, request.ParentVersions);
+				DeleteAllKeyValuesForVersions(request.Key, versions);
 			}
 
 			var instanceIdForRow = instanceId;
@@ -149,7 +155,9 @@ namespace Rhino.PersistentHashTable
 				Api.SetColumn(session, data, dataColumns["version_instance_id"], instanceIdForRow.ToByteArray());
 				Api.SetColumn(session, data, dataColumns["data"], request.Bytes);
 				Api.SetColumn(session, data, dataColumns["sha256_hash"], hash);
-			    var timestamp = DateTime.Now.ToOADate();
+				Api.SetColumn(session, data, dataColumns["readonly"], request.IsReadOnly);
+
+				var timestamp = DateTime.Now.ToOADate();
                 if (request.ReplicationTimeStamp.HasValue)
                     timestamp = request.ReplicationTimeStamp.Value.ToOADate();
                 Api.SetColumn(session, data, dataColumns["timestamp"], timestamp);
@@ -310,6 +318,7 @@ namespace Rhino.PersistentHashTable
 				ParentVersions = GetParentVersions(),
 				Data = Api.RetrieveColumn(session, data, dataColumns["data"]),
 				Sha256Hash = Api.RetrieveColumn(session, data, dataColumns["sha256_hash"]),
+				ReadOnly = Api.RetrieveColumnAsBoolean(session, data, dataColumns["readonly"]).Value,
 				ExpiresAt = expiresAt
 			};
 		}
@@ -351,7 +360,7 @@ namespace Rhino.PersistentHashTable
 
 		private string GetKey(string key)
 		{
-			return "rhino.dht [" + instanceId + "]: " + key;
+			return "rhino.pht [" + instanceId + "]: " + key;
 		}
 
 		public void Commit()
@@ -371,15 +380,24 @@ namespace Rhino.PersistentHashTable
 
 			if (Api.TrySeek(session, keys, SeekGrbit.SeekLT) == false)
 				return;
-
+			var count = 0;
 			do
 			{
+
 				var key = Api.RetrieveColumnAsString(session, keys, keysColumns["key"], Encoding.Unicode);
 				var version = ReadVersion();
 
 				Api.JetDelete(session, keys);
 
 				ApplyToKeyAndActiveVersions(data, new[] { version }, key, v => Api.JetDelete(session, data));
+
+				count += 1;
+				// We need to break the unbounded result set here, because there may be many
+				// rows that are not valid, so we break after a hundred or so making sure that 
+				// the commit size doesn't get too big.	This will get cleaned up by the next
+				// commit any way.
+				if(count> 100)
+					break;
 
 			} while (Api.TryMovePrevious(session, keys));
 		}

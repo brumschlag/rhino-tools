@@ -1,6 +1,7 @@
 using System;
 using System.Messaging;
 using System.Net;
+using System.Security.Principal;
 using Rhino.ServiceBus.Exceptions;
 
 namespace Rhino.ServiceBus.Msmq
@@ -93,7 +94,7 @@ namespace Rhino.ServiceBus.Msmq
             throw new ArgumentException("Could not understand queue format: " + queue.Path);
         }
 
-        public static MessageQueue CreateQueue(string newQueuePath, QueueAccessMode accessMode)
+        public static MessageQueue OpenOrCreateQueue(string newQueuePath, QueueAccessMode accessMode)
         {
             try
             {
@@ -110,7 +111,7 @@ namespace Rhino.ServiceBus.Msmq
                 {
                     try
                     {
-                        MessageQueue.Create(newQueuePath, true);
+                        CreateQueue(newQueuePath);
                     }
                     catch (Exception e)
                     {
@@ -125,5 +126,16 @@ namespace Rhino.ServiceBus.Msmq
                 throw new MessagePublicationException("Could not open queue (" + newQueuePath + ")", e);
             }
         }
+
+        public static MessageQueue CreateQueue(string newQueuePath)
+        {
+            var queue = MessageQueue.Create(newQueuePath, true);
+            var administratorsGroupName = new SecurityIdentifier("S-1-5-32-544")
+                                                .Translate(typeof(NTAccount))
+                                                .ToString();
+            queue.SetPermissions(administratorsGroupName, MessageQueueAccessRights.FullControl, AccessControlEntryType.Allow);
+            return queue;
+        }
+        
     }
 }

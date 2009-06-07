@@ -1,15 +1,16 @@
 ﻿using System;
 using System.IO;
+using System.Runtime.ConstrainedExecution;
 using System.Text;
 using System.Web;
 using Microsoft.Isam.Esent.Interop;
+using System.Diagnostics;
 
 namespace Rhino.PersistentHashTable
 {
-    public class PersistentHashTable : IDisposable
+    public class PersistentHashTable : CriticalFinalizerObject, IDisposable
     {
-        private readonly Instance instance;
-        private bool needToDisposeInstance;
+        private JET_INSTANCE instance;
         private readonly string database;
         private readonly string path;
 
@@ -22,19 +23,15 @@ namespace Rhino.PersistentHashTable
             if (Path.IsPathRooted(database) == false)
                 path = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, database);
             this.database = Path.Combine(path, Path.GetFileName(database));
-
-            instance = new Instance(database + "_" + Guid.NewGuid());
+            Api.JetCreateInstance(out instance, database + Guid.NewGuid());
         }
 
         public void Initialize()
         {
             ConfigureInstance(instance);
-
             try
             {
-                instance.Init();
-
-                needToDisposeInstance = true;
+                Api.JetInit(ref instance);
 
                 EnsureDatabaseIsCreatedAndAttachToDatabase();
 
@@ -42,21 +39,22 @@ namespace Rhino.PersistentHashTable
             }
             catch (Exception e)
             {
-                if (needToDisposeInstance)
-                    instance.Dispose();
-                needToDisposeInstance = false;
+                Dispose();
                 throw new InvalidOperationException("Could not open cache: " + database, e);
             }
         }
 
-        private void ConfigureInstance(Instance esentInstance)
+        private void ConfigureInstance(JET_INSTANCE jetInstance)
         {
-            esentInstance.Parameters.CircularLog = true;
-            esentInstance.Parameters.Recovery = true;
-            esentInstance.Parameters.CreatePathIfNotExist = true;
-            esentInstance.Parameters.TempDirectory = Path.Combine(path, "temp");
-            esentInstance.Parameters.SystemDirectory = Path.Combine(path, "system");
-            esentInstance.Parameters.LogFileDirectory = Path.Combine(path, "logs");
+            new InstanceParameters(jetInstance)
+            {
+                CircularLog = true,
+                Recovery = true,
+                CreatePathIfNotExist = true,
+                TempDirectory = Path.Combine(path, "temp"),
+                SystemDirectory = Path.Combine(path, "system"),
+                LogFileDirectory = Path.Combine(path, "logs")
+            };
         }
 
         private void SetIdFromDb()
@@ -96,7 +94,7 @@ namespace Rhino.PersistentHashTable
                 }
                 catch (EsentErrorException e)
                 {
-                    if(e.Error==JET_err.DatabaseDirtyShutdown)
+                    if (e.Error == JET_err.DatabaseDirtyShutdown)
                     {
                         try
                         {
@@ -105,7 +103,7 @@ namespace Rhino.PersistentHashTable
                                 recoverInstance.Init();
                                 using (var recoverSession = new Session(recoverInstance))
                                 {
-                                    ConfigureInstance(recoverInstance);
+                                    ConfigureInstance(recoverInstance.JetInstance);
                                     Api.JetAttachDatabase(recoverSession, database,
                                                           AttachDatabaseGrbit.DeleteCorruptIndexes);
                                     Api.JetDetachDatabase(recoverSession, database);
@@ -130,9 +128,27 @@ namespace Rhino.PersistentHashTable
 
         public void Dispose()
         {
-            if (needToDisposeInstance)
+            GC.SuppressFinalize(this);
+            Api.JetTerm(instance);
+        }
+
+        ~PersistentHashTable()
+        {
+            try
             {
-                instance.Dispose();
+                Trace.WriteLine(
+                    "Disposing esent resources from finalizer! You should call PersistentHashTable.Dispose() instead!");
+                Api.JetTerm(instance);
+            }
+            catch (Exception exception)
+            {
+                try
+                {
+                    Trace.WriteLine("Failed to dispose esent instance from finalizer because: " + exception);
+                }
+                catch
+                {
+                }
             }
         }
 

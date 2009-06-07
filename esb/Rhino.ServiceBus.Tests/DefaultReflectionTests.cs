@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using Rhino.ServiceBus.Impl;
 using Rhino.ServiceBus.Internal;
 using Rhino.ServiceBus.Sagas;
@@ -63,6 +64,29 @@ namespace Rhino.ServiceBus.Tests
         {
             Assert.Throws<NotImplementedException>(() => reflection.InvokeSagaPersisterSave(new ThrowingPersister(), new ThrowingList()));
         }
+		[Fact]
+		public void Gets_assembly_name_without_version_for_generic_lists()
+		{
+			var list = new List<SomeMsg>();
+			var output = reflection.GetAssemblyQualifiedNameWithoutVersion(list.GetType());
+			
+			Assert.DoesNotContain("Rhino.ServiceBus.Tests,Version=",output.Replace(" ",""));
+		}
+		[Fact]
+		public void Gets_assembly_name_without_version_for_generic_types_in_local_assemblies()
+		{
+			var output = reflection.GetAssemblyQualifiedNameWithoutVersion(typeof(GenericConsumer<SomeMsg>));
+		
+			Assert.DoesNotContain("Rhino.ServiceBus.Tests,Version=", output.Replace(" ", ""));
+		}
+		[Fact]
+		public void Gets_assembly_name_with_more_than_one_type_parameter()
+		{
+			string name = reflection.GetAssemblyQualifiedNameWithoutVersion(typeof(Dictionary<object, object>));
+			Assert.Equal(
+				typeof(Dictionary<object, object>).AssemblyQualifiedName,
+				name);
+		}
 		public class SomeMsg{}
 		public class SomeMsgConsumer:GenericConsumer<SomeMsg>{}
 		public class GenericConsumer<T>:ConsumerOf<T>
